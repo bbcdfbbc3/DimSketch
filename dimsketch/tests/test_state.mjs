@@ -6,7 +6,7 @@ import {setImmediate as nextTurn} from 'node:timers/promises';
 import {test} from 'node:test';
 import vm from 'node:vm';
 
-import {labelPosition, rotationHandle, rotateRegion} from '../static/renderer.js';
+import {labelPosition, measurementValue, rotationHandle, rotateRegion} from '../static/renderer.js';
 
 const appSource = readFileSync(new URL('../static/app.js', import.meta.url), 'utf8')
   .replace(/^import .*\r?\n/, '')
@@ -65,14 +65,14 @@ function harness() {
   const timers = new Map();
   let timerId = 0;
   const context = {
-    structuredClone, crypto: webcrypto, labelPosition, rotationHandle, rotateRegion,
+    structuredClone, crypto: webcrypto, labelPosition, measurementValue, rotationHandle, rotateRegion,
     FormData: class {
       /** 목적: 폼 입력을 실제 읽기 함수에 전달 · 입력: 시험용 폼 · 출력: 입력값 맵 */
       constructor(form) {return form ? new Map(form.values) : new FormData();}
     },
     document: {
       /** 목적: 렌더링 밖의 최소 요소 제공 · 입력: 선택자 · 출력: 시험용 요소 */
-      querySelector(selector) {if (selector === '#record-form') return elements.get(selector) || null;if (!elements.has(selector)) elements.set(selector, {});return elements.get(selector);},
+      querySelector(selector) {if (['#record-form','#existing-target'].includes(selector)) return elements.get(selector) || null;if (!elements.has(selector)) elements.set(selector, {});return elements.get(selector);},
     },
     /** 목적: 자동 저장 예약을 실제 대기 없이 보관 · 입력: 함수·지연값 · 출력: 예약 번호 */
     setTimeout(callback, delay) {timerId += 1;timers.set(timerId, {callback, delay});return timerId;},
@@ -87,7 +87,7 @@ function harness() {
     fakeToast(message, error = false) {notices.push({message,error});},
   };
   vm.createContext(context);
-  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture, handleKeydown, submitDialog, openDialog, renderInspector, markObjectRegion, finishPolygon, handlePaste};', context);
+  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture, handleKeydown, submitDialog, openDialog, closeDialog, renderInspector, markObjectRegion, finishPolygon, handlePaste, objectDialog, measurementDialog};', context);
   // 화면 렌더링만 생략하고 저장·이력·좌표 처리는 app.js 원본을 실행한다.
   vm.runInContext('renderControls=()=>{};renderRecords=()=>{};renderPhotos=()=>{};renderInspector=()=>{};renderAll=()=>{};draw=()=>{};toast=fakeToast;api=fakeApi;confirmAction=async()=>true;', context);
   const functions = context.testApi;
@@ -119,6 +119,121 @@ function saveKey(options = {}) {
   return {key:'s',code:'KeyS',ctrlKey:true,defaultPrevented:false,
     preventDefault() {this.defaultPrevented = true;},...options};
 }
+
+/** 목적: 선택 항목의 실제 상세 패널 버튼 연결 · 입력: 앱·종류·번호 · 출력: 상세 패널 HTML */
+function inspectRecord(app, type, id) {
+  app.state.selection = {type,id};app.state.tab = type;app.elements.set('#record-form',{});
+  app.elements.set('#inspector',{innerHTML:'',insertAdjacentHTML(position,html){this.innerHTML += html;}});
+  app.renderInspector();return app.elements.get('#inspector').innerHTML;
+}
+
+/** 목적: 신규 생성 팝업에 사용자 입력 전달 · 입력: 앱·필드 값 · 출력: 실제 제출과 저장 결과 */
+function submitValues(app, values) {
+  const button = {disabled:false};
+  return app.submitDialog({currentTarget:{values:Object.entries(values),querySelector(){return button;}},preventDefault(){}});
+}
+
+/** 목적: 채택값과 이전 이력이 있는 치수 준비 · 입력: 앱 · 출력: 원본 치수와 신규 입력용 값 */
+function seedMeasurement(app) {
+  app.state.project.features.push({id:'hole',object_id:'plate',kind:'hole',label:'A-H1',name:'구멍',description:'원본 기준'});
+  app.state.project.counters.features['plate:hole'] = 1;app.state.project.counters.measurement = 1;
+  const record = {id:'dimension',label:'M01',name:'기준면 높이',kind:'offset',direction:'down',
+    from_ref:{object_id:'plate',feature_id:'hole',text:'구멍 중심'},to_ref:{object_id:'plate',feature_id:null,text:'아랫면'},
+    readings:[{id:'old',value:12,unit:'cm',status:'measured',error:null,tool:'자',note:'이전 측정',created_at:'2020-01-01T00:00:00Z',value_mm:120,error_mm:null},
+      {id:'adopted',value:12.5,unit:'cm',status:'approximate',error:0.2,tool:'줄자',note:'채택한 측정',created_at:'2020-01-02T00:00:00Z',value_mm:125,error_mm:2}],selected_reading_id:'adopted'};
+  app.state.project.measurements.push(record);
+  app.state.project.annotations.push({id:'dimension-mark',photo_id:'photo',target_type:'measurement',target_id:record.id,shape:'line',points:[[40,30],[80,30]]});
+  return {record,values:{name:record.name,kind:record.kind,direction:record.direction,from_ref:'feature:hole',from_text:'구멍 중심',to_ref:'object:plate',to_text:'아랫면',
+    status:'approximate',unit:'cm',value:'12.5',error:'0.2',tool:'줄자',note:'채택한 측정'}};
+}
+
+test('기존 물체 정보는 표시 버튼 아래에서 수정 가능한 새 물체로 생성하고 원본과 영역을 유지한다', async () => {
+  const app = harness();const source = app.state.project.objects[0];source.description = '같은 형식의 고정판';
+  app.state.annotationId = 'mark';const original = plain(app.state.project);
+  const panel = inspectRecord(app,'objects',source.id);
+  assert.ok(panel.indexOf('id="mark-record"') < panel.indexOf('id="create-from-record"'));
+  assert.ok(panel.indexOf('id="create-from-record"') < panel.indexOf('id="delete-record"'));
+  app.elements.get('#create-from-record').onclick();
+  const content = app.elements.get('#dialog-content').innerHTML;
+  assert.match(content,/name="name" type="text" value="고정판"/);assert.match(content,/같은 형식의 고정판/);
+  assert.match(content,/name="color" type="color" value="#123456"/);
+  assert.equal(app.state.project.counters.object,1);assert.equal(app.state.project.objects.length,1);
+  const saved = submitValues(app,{existing:source.id,name:'다른 고정판',description:'새 물체 설명',color:'#abcdef'});await nextTurn();
+  const payload = app.requests[0].payload;const created = payload.objects[1];
+  assert.equal(created.label,'B');assert.notEqual(created.id,source.id);assert.equal(created.name,'다른 고정판');assert.equal(created.color,'#abcdef');
+  assert.deepEqual(payload.objects[0],original.objects[0]);assert.deepEqual(payload.annotations,original.annotations);
+  assert.deepEqual(payload.features,original.features);assert.equal(app.state.annotationId,null);
+  accept(app.requests[0]);await saved;assert.equal(app.state.selection.id,created.id);
+  app.undoRedo();assert.equal(app.state.project.objects.length,1);assert.equal(app.state.project.counters.object,2);
+  app.undoRedo(true);assert.equal(app.state.project.objects[1].id,created.id);
+});
+
+test('새 치수는 채택한 입력을 미리 채우고 새 번호·측정 ID·시각으로 시작하며 이전 이력과 치수선을 복사하지 않는다', async () => {
+  const app = harness();const {record,values} = seedMeasurement(app);const original = plain(app.state.project);
+  app.state.annotationId = 'dimension-mark';const panel = inspectRecord(app,'measurements',record.id);
+  assert.ok(panel.indexOf('id="mark-record"') < panel.indexOf('id="create-from-record"'));
+  assert.ok(panel.indexOf('id="create-from-record"') < panel.indexOf('id="delete-record"'));
+  app.elements.get('#create-from-record').onclick();const content = app.elements.get('#dialog-content').innerHTML;
+  for (const pattern of [/value="기준면 높이"/,/value="offset" selected/,/value="down" selected/,/value="feature:hole" selected/,/value="object:plate" selected/,/value="approximate" selected/,/value="cm" selected/,/value="12.5"/,/value="0.2"/,/value="줄자"/,/채택한 측정/]) assert.match(content,pattern);
+  const saved = submitValues(app,{...values,existing:record.id,name:'다른 기준면 높이',value:'13.2',note:'새 치수 확인'});await nextTurn();
+  const payload = app.requests[0].payload;const created = payload.measurements[1];const reading = created.readings[0];
+  assert.equal(created.label,'M02');assert.notEqual(created.id,record.id);assert.equal(created.readings.length,1);
+  assert.equal(reading.value_mm,132);assert.equal(reading.error_mm,2);assert.equal(created.selected_reading_id,reading.id);
+  assert.ok(!record.readings.some(item => item.id === reading.id || item.created_at === reading.created_at));
+  assert.deepEqual(created.from_ref,record.from_ref);assert.deepEqual(created.to_ref,record.to_ref);
+  assert.deepEqual(payload.measurements[0],original.measurements[0]);assert.deepEqual(payload.annotations,original.annotations);
+  assert.equal(app.state.annotationId,null);accept(app.requests[0]);await saved;
+  const newRecord = app.state.project.measurements[1];assert.notEqual(newRecord.from_ref,record.from_ref);
+  newRecord.from_ref.text = '독립된 기준 설명';assert.equal(app.state.project.measurements[0].from_ref.text,'구멍 중심');
+});
+
+test('새 항목 팝업을 취소하거나 잘못 입력하면 번호·기록·원본 선택을 유지한다', async () => {
+  for (const type of ['objects','measurements']) {
+    const app = harness();const seeded = type === 'measurements' ? seedMeasurement(app) : null;
+    const record = seeded?.record || app.state.project.objects[0];inspectRecord(app,type,record.id);
+    const original = plain(app.state.project);const selection = plain(app.state.selection);
+    app.elements.get('#create-from-record').onclick();app.closeDialog();
+    assert.deepEqual(plain(app.state.project),original);assert.deepEqual(plain(app.state.selection),selection);
+    app.elements.get('#create-from-record').onclick();
+    await submitValues(app,seeded ? {...seeded.values,value:'-1'} : {name:'   ',description:'설명',color:'#123456'});
+    assert.equal(app.elements.get('#edit-dialog').open,true);assert.ok(app.elements.get('#dialog-error').textContent);
+    assert.deepEqual(plain(app.state.project),original);assert.equal(app.requests.length,0);assert.equal(app.state.seq,0);
+  }
+});
+
+test('채택값이 없는 치수는 이전 이력을 임의로 고르지 않고 새 값을 입력받는다', async () => {
+  const app = harness();const {record,values} = seedMeasurement(app);record.selected_reading_id = null;
+  inspectRecord(app,'measurements',record.id);app.elements.get('#create-from-record').onclick();
+  const content = app.elements.get('#dialog-content').innerHTML;
+  assert.match(content,/채택한 측정값이 없어/);assert.match(content,/name="value" type="number" value=""/);
+  assert.doesNotMatch(content,/value="12.5"/);
+  await submitValues(app,{...values,value:''});assert.equal(app.requests.length,0);assert.equal(app.state.project.counters.measurement,1);
+  const saved = submitValues(app,{...values,value:'14'});await nextTurn();
+  assert.equal(app.requests[0].payload.measurements[1].readings[0].value_mm,140);
+  accept(app.requests[0]);await saved;assert.equal(record.selected_reading_id,null);assert.equal(record.readings.length,2);
+});
+
+test('미측정 치수를 재사용하면 숫자 입력은 비활성화하고 새 미측정 기록을 생성한다', async () => {
+  const app = harness();const {record,values} = seedMeasurement(app);const adopted = record.readings[1];
+  Object.assign(adopted,{status:'unknown',value:null,value_mm:null,error:null,error_mm:null});
+  inspectRecord(app,'measurements',record.id);app.elements.get('#create-from-record').onclick();
+  const content = app.elements.get('#dialog-content').innerHTML;
+  assert.match(content,/value="unknown" selected/);assert.match(content,/name="value"[^>]*disabled/);assert.match(content,/name="error"[^>]*disabled/);
+  const saved = submitValues(app,{...values,status:'unknown',value:undefined,error:undefined});await nextTurn();
+  const reading = app.requests[0].payload.measurements[1].readings[0];
+  assert.equal(reading.value,null);assert.equal(reading.error,null);assert.notEqual(reading.id,adopted.id);
+  accept(app.requests[0]);await saved;
+});
+
+test('일반 신규 물체·치수 등록은 기존 정보 재사용 없이도 빈 폼에서 정상 생성한다', async () => {
+  for (const type of ['objects','measurements']) {
+    const app = harness();const seeded = type === 'measurements' ? seedMeasurement(app) : null;
+    if (seeded) app.measurementDialog();else app.objectDialog();
+    assert.match(app.elements.get('#dialog-content').innerHTML,/name="name" type="text" value=""/);
+    const saved = submitValues(app,seeded ? {...seeded.values,name:'직접 등록한 치수'} : {name:'직접 등록한 물체',description:'설명'});await nextTurn();
+    assert.equal(app.requests[0].payload[type].length,2);accept(app.requests[0]);await saved;
+  }
+});
 
 /** 목적: 클립보드 파일과 기본 동작 관찰 · 입력: 파일 목록과 이벤트 옵션 · 출력: 붙여넣기 이벤트 */
 function imagePaste(files, options = {}) {
