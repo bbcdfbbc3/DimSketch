@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#183e39">
+  <title>DimSketch · 사진으로 기록하는 치수</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">⌗</span><div><strong>DimSketch</strong><span>사진을 연결하고, 치수를 기록하세요</span></div></div>
+    <div class="project-controls"><label class="sr-only" for="project-select">프로젝트 선택</label><select id="project-select"><option value="">프로젝트 선택</option></select><button id="project-edit" title="프로젝트 이름과 설명">이름·설명</button><button id="project-new">＋ 새 프로젝트</button></div>
+    <div class="header-actions"><span id="save-status" role="status">프로젝트를 선택하세요</span><button id="save-retry" hidden>저장 재시도</button><button id="conflict-copy" hidden>내 기록 보관</button><button id="conflict-reload" hidden>서버 기록 열기</button><button id="import-button">ZIP 불러오기</button><button id="export-button" class="primary">자료 내보내기 ↗</button></div>
+  </header>
+  <main class="workspace">
+    <aside class="photos-panel">
+      <div class="panel-heading"><div><span class="eyebrow">사진 모음</span><h1>한 물체, 여러 시선</h1></div><span id="photo-count" class="count">0</span></div>
+      <button id="upload-button" class="upload-button">＋ 사진 추가 <small>JPG · PNG · WebP</small></button>
+      <label class="field filter-label">물체별 사진 보기<select id="photo-filter"><option value="">모든 사진</option></select></label>
+      <div id="photo-list" class="photo-list"></div>
+      <div class="photo-footer">실제로 잰 값을 입력하세요.<br>사진 속 길이로 치수를 계산하지 않습니다.</div>
+    </aside>
+    <section class="editor-panel" aria-label="사진 편집">
+      <div id="recovery-notice" class="review-alert" role="alert" hidden></div>
+      <div class="editor-top"><div><span id="photo-view" class="eyebrow">실측 기록</span><strong id="photo-title">사진을 추가해 시작하세요</strong></div><button id="photo-edit">사진 정보</button></div>
+      <div class="toolbar" aria-label="표시 도구">
+        <div class="tool-group"><button data-mode="select" class="active" title="선택·이동 (V)">↖ 선택</button><button data-mode="rect" title="드래그해 물체 영역 표시">▭ 물체</button><button data-mode="polygon" title="꼭짓점 클릭 후 Enter 또는 더블클릭">⬡ 다각형</button><button data-mode="point" title="구멍 중심이나 기준점 표시">⊙ 기준점</button><button data-mode="plane" title="두 점으로 기준면 표시">⌑ 기준면</button><button data-mode="measure" title="두 점 클릭 후 실제 측정값 입력">↔ 치수</button></div>
+        <div class="tool-group history-tools"><button id="undo-button" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소">↶</button><button id="redo-button" title="다시 실행 (Ctrl+Y)" aria-label="다시 실행">↷</button><button id="delete-annotation" title="선택한 사진 표시만 삭제" aria-label="선택 표시 삭제">⌫</button></div>
+        <div class="tool-group zoom-tools"><button id="zoom-out" aria-label="축소">−</button><span id="zoom-value">100%</span><button id="zoom-in" aria-label="확대">＋</button><button id="fit-button">맞춤</button></div>
+      </div>
+      <div id="canvas-host" class="canvas-host"><canvas id="photo-canvas" aria-label="사진의 물체와 실측 치수를 표시하는 편집 영역" tabindex="0"></canvas><div id="canvas-empty" class="canvas-empty"><div class="empty-symbol">⌗</div><h2>사진 위에 실측을 남기세요</h2><p>같은 물체를 A로 연결하면<br>다른 각도의 기록도 한곳에 모입니다.</p><ol><li>프로젝트 만들기</li><li>사진 추가하기</li><li>물체와 치수 표시하기</li></ol></div></div>
+      <div class="editor-footer"><span id="tool-help">물체·치수를 클릭해 수정 · 가운데 버튼 드래그로 사진 이동 · 휠로 확대</span><span id="image-size"></span></div>
+    </section>
+    <aside class="details-panel">
+      <div class="details-intro"><span class="eyebrow">사진을 잇는 공통 기록</span><h2>무엇을 측정했나요?</h2><p>물체 번호와 치수 번호는 모든 사진에서 함께 사용합니다.</p></div>
+      <div class="tabs" role="tablist"><button data-tab="objects" role="tab" class="active">물체 <span id="objects-count">0</span></button><button data-tab="features" role="tab">기준 <span id="features-count">0</span></button><button data-tab="measurements" role="tab">치수 <span id="measurements-count">0</span></button></div>
+      <div class="records-actions"><button id="new-record">＋ 물체 등록</button><span id="review-count" class="review-count"></span></div>
+      <div id="record-list" class="record-list"></div>
+      <div id="inspector" class="inspector"><div class="inspector-empty">위 목록 또는 사진의 표시를 선택하면<br>상세 정보를 수정할 수 있습니다.</div></div>
+    </aside>
+  </main>
+  <input id="photo-input" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+  <input id="import-input" type="file" accept=".zip,application/zip" hidden>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <div id="busy-overlay" class="busy-overlay" hidden><div class="busy-card"><span class="spinner"></span><strong id="busy-text">처리 중입니다…</strong><p>사진과 기록을 준비하고 있습니다.</p></div></div>
+  <dialog id="edit-dialog"><form id="dialog-form"><div class="dialog-header"><div><span class="eyebrow">DimSketch</span><h2 id="dialog-title"></h2></div><button id="dialog-close" type="button" aria-label="닫기">×</button></div><div id="dialog-content"></div><div id="dialog-error" class="form-error" role="alert"></div><div class="dialog-footer"><button id="dialog-cancel" type="button">취소</button><button class="primary" type="submit">기록 완료</button></div></form></dialog>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title"><div class="dialog-header"><div><span class="eyebrow">DimSketch</span><h2 id="confirm-title">기록 변경 확인</h2></div></div><p id="confirm-message" class="confirm-message"></p><div class="dialog-footer"><button id="confirm-cancel" type="button">취소</button><button id="confirm-accept" type="button" class="primary">계속</button></div></dialog>
+</body>
+</html>
