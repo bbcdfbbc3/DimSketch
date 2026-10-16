@@ -194,7 +194,7 @@ function renderInspector() {
   if (selection.type === 'measurements') {renderMeasurementInspector(record,count);return;}
   panel.innerHTML = `<div class="inspector-title"><span class="record-badge" style="background:${selection.type === 'objects' ? record.color : state.project.objects.find(object => object.id === record.object_id)?.color}">${escapeHtml(record.label)}</span><strong>${selection.type === 'objects' ? '물체 정보' : FEATURES[record.kind]}</strong></div><form id="record-form">${field('name','이름',record.name,'text','required maxlength="200"')}${textArea('description','설명',record.description)}${selection.type === 'objects' ? field('color','표시 색상',record.color,'color') : `<div class="small-note">소속 물체: ${escapeHtml(state.project.objects.find(object => object.id === record.object_id)?.label)}<br>다른 사진에도 같은 번호로 연결하세요.</div>`}<button type="submit" class="primary">정보 저장</button><div class="inspector-error" role="alert"></div></form><p class="annotation-note">사진 표시 ${count}개 · 같은 번호의 모든 사진에 반영됩니다.</p><button id="mark-record">${selection.type === 'objects' ? '현재 사진에 영역 표시' : '현재 사진에 기준 표시'}</button><br><button id="delete-record" class="danger-link">${selection.type === 'objects' ? '물체' : '기준'} 기록 삭제…</button>`;
   $('#record-form').onsubmit = event => {event.preventDefault();if (state.busy) return;const data = new FormData(event.currentTarget);const name = data.get('name').trim();if (!name) {event.currentTarget.querySelector('.inspector-error').textContent = '이름을 입력하세요. 공백만 입력할 수 없습니다.';return;}const before = clone(state.project);record.name = name;record.description = data.get('description').trim();if (selection.type === 'objects') record.color = data.get('color');commitChange(before);renderInspector();};
-  $('#mark-record').onclick = () => setMode(selection.type === 'objects' ? 'rect' : record.kind === 'plane' ? 'plane' : 'point',true);
+  $('#mark-record').onclick = () => selection.type === 'objects' ? markObjectRegion() : setMode(record.kind === 'plane' ? 'plane' : 'point',true);
   $('#delete-record').onclick = () => deleteRecord(selection.type,record.id);
   if (selection.type === 'objects') renderRotationControls();
 }
@@ -316,6 +316,20 @@ function nextObjectLabel() {state.project.counters.object += 1;let number = stat
 
 /** 목적: 표시를 현재 사진에 연결 · 입력: 대상 종류와 ID 및 도형 · 출력: 새 표시 */
 function addAnnotation(type, id, geometry) {if (!geometry || !currentPhoto()) return null;const annotation = {id:uid(),photo_id:state.photoId,target_type:type,target_id:id,shape:geometry.shape,points:geometry.points.map(point => [...point])};annotation.label_position = clampPoint(labelPosition(annotation));state.project.annotations.push(annotation);state.annotationId = annotation.id;return annotation;}
+
+/** 목적: 기존 물체를 현재 사진에 표시할 영역 모양 선택 · 입력: 현재 물체 선택 · 출력: 사각형 또는 다각형 연결 그리기 */
+function markObjectRegion() {
+  if (state.busy || state.selection?.type !== 'objects') return;
+  const object = state.project?.objects.find(item => item.id === state.selection.id);
+  if (!object) return;
+  if (!currentPhoto() || !state.image) {toast('영역을 표시할 사진을 먼저 선택하세요. 사진을 불러온 뒤 그릴 수 있습니다.');return;}
+  const dialog = $('#region-dialog');if (dialog.open) return;
+  $('#region-message').textContent = `${object.label} · ${object.name}\n사각형은 드래그해서 그립니다.\n다각형은 꼭짓점을 클릭한 뒤 Enter 또는 더블클릭으로 완료합니다.`;
+  $('#region-close').onclick = () => dialog.close();$('#region-cancel').onclick = () => dialog.close();
+  $('#region-rect').onclick = () => {dialog.close();setMode('rect',true);};
+  $('#region-polygon').onclick = () => {dialog.close();setMode('polygon',true);};
+  dialog.showModal();
+}
 
 /** 목적: 물체 새 등록 또는 기존 물체 사진 연결 · 입력: 선택적 도형 · 출력: 물체 선택 대화상자 */
 function objectDialog(geometry = null) {
@@ -544,7 +558,7 @@ async function reloadConflict() {
 function handleKeydown(event) {
   if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.code === 'KeyS' || event.key.toLowerCase() === 's')) {
     event.preventDefault();
-    if (event.repeat || state.busy || $('#confirm-dialog').open) return;
+    if (event.repeat || state.busy || $('#confirm-dialog').open || $('#region-dialog').open) return;
     if ($('#edit-dialog').open) {
       const form = $('#dialog-form');const submit = form.querySelector('[type=submit]');
       if (!submit.disabled) form.requestSubmit(submit);
@@ -554,7 +568,7 @@ function handleKeydown(event) {
     }
     return;
   }
-  const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);if ($('#edit-dialog').open || typing || state.busy) return;
+  const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);if ($('#edit-dialog').open || $('#region-dialog').open || typing || state.busy) return;
   if (event.key === 'Escape') {state.draft = null;setMode('select');}
   if (event.key === 'Enter' && state.mode === 'polygon') {event.preventDefault();finishPolygon();}
   if (event.key === 'Delete' || event.key === 'Backspace') {event.preventDefault();deleteAnnotation();}

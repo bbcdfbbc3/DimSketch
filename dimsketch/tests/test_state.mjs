@@ -52,6 +52,13 @@ function harness() {
     close() {this.open = false;},
   });
   elements.set('#confirm-dialog', {open:false});
+  elements.set('#region-dialog', {
+    open:false,
+    /** 목적: 영역 방식 선택 창 열림 재현 · 입력: 없음 · 출력: 열린 선택 창 */
+    showModal() {this.open = true;},
+    /** 목적: 선택·취소로 닫힌 창 재현 · 입력: 없음 · 출력: 닫힌 선택 창 */
+    close() {this.open = false;},
+  });
   const requests = [];
   const timers = new Map();
   let timerId = 0;
@@ -76,7 +83,7 @@ function harness() {
     },
   };
   vm.createContext(context);
-  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture, handleKeydown, submitDialog, openDialog};', context);
+  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture, handleKeydown, submitDialog, openDialog, renderInspector, markObjectRegion, finishPolygon};', context);
   // 화면 렌더링만 생략하고 저장·이력·좌표 처리는 app.js 원본을 실행한다.
   vm.runInContext('renderControls=()=>{};renderRecords=()=>{};renderPhotos=()=>{};renderInspector=()=>{};renderAll=()=>{};draw=()=>{};toast=()=>{};api=fakeApi;confirmAction=async()=>true;', context);
   const functions = context.testApi;
@@ -108,6 +115,68 @@ function saveKey(options = {}) {
   return {key:'s',code:'KeyS',ctrlKey:true,defaultPrevented:false,
     preventDefault() {this.defaultPrevented = true;},...options};
 }
+
+test('기존 물체의 영역 표시에서 선택한 사각형·다각형을 다른 사진의 같은 물체로 저장한다', async () => {
+  for (const mode of ['rect','polygon']) {
+    const app = harness();const original = plain(app.state.project.annotations[0]);
+    app.state.project.photos.push({id:'side',width:200,height:100});app.state.photoId = 'side';
+    app.state.selection = {type:'objects',id:'plate'};
+    app.elements.set('#record-form',{});app.renderInspector();
+    app.elements.get('#mark-record').onclick();
+    assert.equal(app.elements.get('#region-dialog').open,true);
+    assert.equal(app.state.mode,'select');assert.equal(app.state.seq,0);
+    app.elements.get(`#region-${mode}`).onclick();
+    assert.equal(app.elements.get('#region-dialog').open,false);assert.equal(app.state.mode,mode);
+    assert.deepEqual(plain(app.state.linkTarget),{type:'objects',id:'plate'});
+    app.elements.set('#existing-target',{value:'plate'});
+    app.elements.set('#new-target-fields',{querySelectorAll(){return [];}});
+    if (mode === 'rect') {
+      app.pointerDown(pointer(50,20));app.pointerMove(pointer(100,60));app.pointerUp(pointer(100,60));
+    } else {
+      for (const [x,y] of [[50,20],[100,20],[90,60],[60,50]]) {app.pointerDown(pointer(x,y));app.pointerUp(pointer(x,y));}
+      app.finishPolygon();
+    }
+    assert.equal(app.elements.get('#edit-dialog').open,true);
+    assert.match(app.elements.get('#dialog-content').innerHTML,/<option value="plate" selected>/);
+    const button = {disabled:false};const form = {values:[['existing','plate']],querySelector(){return button;}};
+    const saved = app.submitDialog({currentTarget:form,preventDefault(){}});await nextTurn();
+    const payload = app.requests[0].payload;
+    assert.equal(payload.objects.length,1);assert.equal(payload.counters.object,1);
+    assert.deepEqual(payload.annotations[0],original);
+    assert.equal(payload.annotations[1].photo_id,'side');assert.equal(payload.annotations[1].target_id,'plate');
+    assert.equal(payload.annotations[1].shape,mode);assert.equal(payload.annotations[1].points.length,mode === 'rect' ? 2 : 4);
+    accept(app.requests[0]);await saved;
+    assert.equal(app.state.savedSeq,app.state.seq);assert.equal(app.state.mode,'select');
+    app.undoRedo();assert.equal(app.state.project.annotations.length,1);assert.equal(app.state.project.objects.length,1);
+    app.undoRedo(true);assert.equal(app.state.project.annotations[1].shape,mode);
+  }
+});
+
+test('영역 방식 선택을 취소하거나 선택 중 단축키를 눌러도 기존 기록을 바꾸지 않는다', () => {
+  for (const close of ['region-cancel','region-close']) {
+    const app = harness();app.state.selection = {type:'objects',id:'plate'};
+    const original = plain(app.state.project);const selection = plain(app.state.selection);
+    app.markObjectRegion();
+    const save = saveKey();app.handleKeydown(save);app.handleKeydown({key:'Delete'});
+    assert.equal(save.defaultPrevented,true);assert.equal(app.elements.get('#region-dialog').open,true);
+    app.elements.get(`#${close}`).onclick();
+    assert.equal(app.elements.get('#region-dialog').open,false);
+    assert.deepEqual(plain(app.state.project),original);assert.deepEqual(plain(app.state.selection),selection);
+    assert.equal(app.state.mode,'select');assert.equal(app.state.linkTarget,null);
+    assert.equal(app.state.seq,0);assert.equal(app.requests.length,0);
+  }
+});
+
+test('선택한 사진이나 로드된 이미지가 없으면 영역 그리기를 시작하지 않는다', () => {
+  for (const missing of ['photo','image']) {
+    const app = harness();app.state.selection = {type:'objects',id:'plate'};
+    if (missing === 'photo') app.state.photoId = null;
+    else app.state.image = null;
+    app.markObjectRegion();
+    assert.equal(app.elements.get('#region-dialog').open,false);
+    assert.equal(app.state.mode,'select');assert.equal(app.state.seq,0);
+  }
+});
 
 test('Ctrl+S는 브라우저 저장을 차단하고 자동 저장 대기 없이 변경을 전송한다', async () => {
   const app = harness();editName(app,'단축키로 저장할 이름');
