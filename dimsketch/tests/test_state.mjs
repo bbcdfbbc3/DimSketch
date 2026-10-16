@@ -44,14 +44,26 @@ function harness() {
     getBoundingClientRect() {return {left: 0, top: 0};},
   };
   elements.set('#photo-canvas', canvas);
+  elements.set('#edit-dialog', {
+    open:false,
+    /** 목적: 팝업 열림 상태 재현 · 입력: 없음 · 출력: 열린 팝업 */
+    showModal() {this.open = true;},
+    /** 목적: 팝업 닫힘 상태 재현 · 입력: 없음 · 출력: 닫힌 팝업 */
+    close() {this.open = false;},
+  });
+  elements.set('#confirm-dialog', {open:false});
   const requests = [];
   const timers = new Map();
   let timerId = 0;
   const context = {
     structuredClone, crypto: webcrypto, labelPosition, rotationHandle, rotateRegion,
+    FormData: class {
+      /** 목적: 폼 입력을 실제 읽기 함수에 전달 · 입력: 시험용 폼 · 출력: 입력값 맵 */
+      constructor(form) {return new Map(form.values);}
+    },
     document: {
       /** 목적: 렌더링 밖의 최소 요소 제공 · 입력: 선택자 · 출력: 시험용 요소 */
-      querySelector(selector) {if (!elements.has(selector)) elements.set(selector, {});return elements.get(selector);},
+      querySelector(selector) {if (selector === '#record-form') return elements.get(selector) || null;if (!elements.has(selector)) elements.set(selector, {});return elements.get(selector);},
     },
     /** 목적: 자동 저장 예약을 실제 대기 없이 보관 · 입력: 함수·지연값 · 출력: 예약 번호 */
     setTimeout(callback, delay) {timerId += 1;timers.set(timerId, {callback, delay});return timerId;},
@@ -64,7 +76,7 @@ function harness() {
     },
   };
   vm.createContext(context);
-  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture};', context);
+  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture, handleKeydown, submitDialog, openDialog};', context);
   // 화면 렌더링만 생략하고 저장·이력·좌표 처리는 app.js 원본을 실행한다.
   vm.runInContext('renderControls=()=>{};renderRecords=()=>{};renderPhotos=()=>{};renderInspector=()=>{};renderAll=()=>{};draw=()=>{};toast=()=>{};api=fakeApi;confirmAction=async()=>true;', context);
   const functions = context.testApi;
@@ -73,7 +85,7 @@ function harness() {
   functions.state.image = {};
   context.fakeHit = () => ({annotation: functions.state.project.annotations[0], kind: 'move'});
   vm.runInContext('hitTest=point=>fakeHit(point);', context);
-  return {...functions, requests, timers, context, canvas};
+  return {...functions, requests, timers, context, canvas, elements};
 }
 
 /** 목적: 사용자 이름 변경을 실제 변경 확정 함수에 전달 · 입력: 시험 앱·새 이름 · 출력: 저장 대기 상태 */
@@ -90,6 +102,101 @@ function accept(request) {
 
 /** 목적: 실제 포인터 함수 호출용 좌표 구성 · 입력: 화면 x·y · 출력: 좌측 버튼 이벤트 */
 function pointer(clientX, clientY) {return {clientX, clientY, pointerId: 1, button: 0};}
+
+/** 목적: 저장 단축키와 기본 동작 차단 여부 관찰 · 입력: 키 옵션 · 출력: 키보드 이벤트 */
+function saveKey(options = {}) {
+  return {key:'s',code:'KeyS',ctrlKey:true,defaultPrevented:false,
+    preventDefault() {this.defaultPrevented = true;},...options};
+}
+
+test('Ctrl+S는 브라우저 저장을 차단하고 자동 저장 대기 없이 변경을 전송한다', async () => {
+  const app = harness();editName(app,'단축키로 저장할 이름');
+  const event = saveKey();const saved = app.handleKeydown(event);
+  assert.equal(event.defaultPrevented,true);
+  assert.equal(app.requests.length,1);
+  assert.equal(app.requests[0].payload.name,'단축키로 저장할 이름');
+  assert.equal(app.timers.size,0,'예약된 자동 저장은 즉시 저장으로 대체해야 함');
+  accept(app.requests[0]);assert.equal(await saved,true);
+  assert.equal(app.state.savedSeq,app.state.seq);
+});
+
+test('입력 중인 폼과 포커스가 없는 상세 폼도 저장 단축키로 먼저 확정한다', async () => {
+  for (const tagName of ['INPUT','TEXTAREA','SELECT',null]) {
+    const app = harness();let submissions = 0;
+    const form = {requestSubmit() {submissions += 1;editName(app,'폼에 작성 중인 최신 값');}};
+    if (tagName) app.context.document.activeElement = {tagName,form};
+    else app.elements.set('#record-form',form);
+    const event = saveKey();const saved = app.handleKeydown(event);
+    assert.equal(event.defaultPrevented,true);assert.equal(submissions,1);
+    assert.equal(app.requests[0].payload.name,'폼에 작성 중인 최신 값');
+    accept(app.requests[0]);assert.equal(await saved,true);
+  }
+});
+
+test('팝업의 실측값은 Ctrl+S로 확정·저장하며 처리 중 중복 등록하지 않는다', async () => {
+  const app = harness();const button = {disabled:false};let submitted;let submissions = 0;
+  const form = {
+    values:[['status','measured'],['value','12.5'],['error',''],['unit','cm'],['tool','줄자'],['note','새 실측값']],
+    querySelector() {return button;},
+    requestSubmit() {submissions += 1;submitted = app.submitDialog({currentTarget:this,preventDefault(){}});},
+  };
+  app.elements.set('#dialog-form',form);app.context.document.activeElement = {tagName:'INPUT',form};
+  app.openDialog('실측값 입력','',data => {
+    const before = structuredClone(app.state.project);
+    app.state.project.measurements.push({id:'measurement',readings:[app.parseReading(data,'width')]});
+    app.commitChange(before);
+  });
+  const event = saveKey();app.handleKeydown(event);app.handleKeydown(saveKey());
+  assert.equal(event.defaultPrevented,true);assert.equal(submissions,1);assert.equal(button.disabled,true);
+  await nextTurn();
+  assert.equal(app.requests.length,1);
+  assert.equal(app.requests[0].payload.measurements[0].readings[0].value_mm,125);
+  accept(app.requests[0]);await submitted;
+  assert.equal(app.state.savedSeq,app.state.seq);
+  assert.equal(app.elements.get('#edit-dialog').open,false);assert.equal(button.disabled,false);
+});
+
+test('잘못된 실측값은 저장 단축키를 눌러도 팝업 입력을 유지한다', async () => {
+  const app = harness();const button = {disabled:false};let submitted;
+  const form = {
+    values:[['status','measured'],['value','-1'],['error',''],['unit','mm']],
+    querySelector() {return button;},
+    requestSubmit() {submitted = app.submitDialog({currentTarget:this,preventDefault(){}});},
+  };
+  app.elements.set('#dialog-form',form);
+  app.openDialog('실측값 입력','',data => app.parseReading(data,'width'));
+  app.handleKeydown(saveKey());await submitted;
+  assert.equal(app.requests.length,0);assert.equal(app.elements.get('#edit-dialog').open,true);
+  assert.ok(app.elements.get('#dialog-error').textContent);
+  assert.equal(new Map(form.values).get('value'),'-1');assert.equal(button.disabled,false);
+});
+
+test('저장 단축키는 연결 실패 후 입력을 유지하고 다시 저장할 수 있다', async () => {
+  const app = harness();editName(app,'연결 실패에도 남겨야 할 입력');
+  const saved = app.handleKeydown(saveKey());const error = new Error('서버 연결 끊김');
+  app.requests[0].reject(error);assert.equal(await saved,false);
+  assert.equal(app.state.saveError,error);assert.notEqual(app.state.seq,app.state.savedSeq);
+  assert.equal(app.state.project.name,'연결 실패에도 남겨야 할 입력');
+  const retried = app.handleKeydown(saveKey());assert.equal(app.requests.length,2);
+  accept(app.requests[1]);assert.equal(await retried,true);assert.equal(app.state.saveError,null);
+});
+
+test('저장 단축키는 한글 배열·Cmd를 지원하고 대기·확인 창·키 반복 중에는 제출하지 않는다', async () => {
+  for (const options of [{key:'ㄴ'},{ctrlKey:false,metaKey:true,key:'S'}]) {
+    const app = harness();editName(app,'다른 키보드에서도 저장');
+    const event = saveKey(options);const saved = app.handleKeydown(event);
+    assert.equal(event.defaultPrevented,true);assert.equal(app.requests.length,1);
+    accept(app.requests[0]);assert.equal(await saved,true);
+  }
+  for (const condition of ['busy','confirm','repeat','no-project']) {
+    const app = harness();
+    if (condition === 'busy') app.state.busy = true;
+    if (condition === 'confirm') app.elements.get('#confirm-dialog').open = true;
+    if (condition === 'no-project') app.state.project = null;
+    const event = saveKey({repeat:condition === 'repeat'});await app.handleKeydown(event);
+    assert.equal(event.defaultPrevented,true);assert.equal(app.requests.length,0);
+  }
+});
 
 test('저장 응답 대기 중 편집도 다음 버전으로 순차 저장한다', async () => {
   const app = harness();

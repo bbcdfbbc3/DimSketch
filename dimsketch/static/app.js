@@ -295,6 +295,16 @@ function openDialog(title, content, handler) {
 /** 목적: 대화상자 종료와 임시 그리기 정리 · 입력: 없음 · 출력: 대화상자 닫기 */
 function closeDialog() {$('#edit-dialog').close();dialogHandler = null;state.draft = null;draw();}
 
+/** 목적: 검증된 팝업 입력을 중복 없이 확정하고 즉시 저장 · 입력: 폼 제출 이벤트 · 출력: 기록 저장 또는 입력 오류 */
+async function submitDialog(event) {
+  event.preventDefault();const submit = event.currentTarget.querySelector('[type=submit]');
+  if (!dialogHandler || submit.disabled || state.busy) return;
+  submit.disabled = true;
+  try {await dialogHandler(new FormData(event.currentTarget));closeDialog();await flushSave();}
+  catch(error) {$('#dialog-error').textContent = error.message;}
+  finally {submit.disabled = false;}
+}
+
 /** 목적: 새 프로젝트 등록 또는 이름·설명 수정 · 입력: 수정 여부 · 출력: 프로젝트 입력 대화상자 */
 function projectDialog(edit = false) {
   if (edit && !state.project) return;
@@ -530,6 +540,29 @@ async function reloadConflict() {
   finally {setBusy(false);}
 }
 
+/** 목적: 브라우저 저장을 앱 저장으로 대체하고 편집 단축키 처리 · 입력: 키보드 이벤트 · 출력: 현재 폼 확정과 저장 또는 편집 동작 */
+function handleKeydown(event) {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.code === 'KeyS' || event.key.toLowerCase() === 's')) {
+    event.preventDefault();
+    if (event.repeat || state.busy || $('#confirm-dialog').open) return;
+    if ($('#edit-dialog').open) {
+      const form = $('#dialog-form');const submit = form.querySelector('[type=submit]');
+      if (!submit.disabled) form.requestSubmit(submit);
+    } else {
+      const form = document.activeElement?.form || $('#record-form');
+      form?.requestSubmit();return flushSave();
+    }
+    return;
+  }
+  const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);if ($('#edit-dialog').open || typing || state.busy) return;
+  if (event.key === 'Escape') {state.draft = null;setMode('select');}
+  if (event.key === 'Enter' && state.mode === 'polygon') {event.preventDefault();finishPolygon();}
+  if (event.key === 'Delete' || event.key === 'Backspace') {event.preventDefault();deleteAnnotation();}
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {event.preventDefault();undoRedo(event.shiftKey);}
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {event.preventDefault();undoRedo(true);}
+  if (event.key.toLowerCase() === 'v') setMode('select');
+}
+
 /** 목적: 단축키와 편집 도구 연결 · 입력: 없음 · 출력: UI 이벤트 등록 */
 function bindEvents() {
   $('#project-new').onclick = () => projectDialog();$('#project-edit').onclick = () => projectDialog(true);
@@ -552,17 +585,9 @@ function bindEvents() {
   canvas.ondblclick = event => {if (event.button !== 0) return;event.preventDefault();finishPolygon();};canvas.oncontextmenu = event => {event.preventDefault();state.draft = null;draw();};
   canvas.addEventListener('wheel',event => {event.preventDefault();zoom(event.deltaY < 0 ? 1.12 : 1 / 1.12,eventPoint(event).screen);},{passive:false});
   $('#dialog-close').onclick = closeDialog;$('#dialog-cancel').onclick = closeDialog;$('#edit-dialog').onclose = () => {state.draft = null;draw();};
-  $('#dialog-form').onsubmit = async event => {event.preventDefault();if (!dialogHandler) return;const submit = event.currentTarget.querySelector('[type=submit]');submit.disabled = true;try {await dialogHandler(new FormData(event.currentTarget));closeDialog();} catch(error) {$('#dialog-error').textContent = error.message;} finally {submit.disabled = false;}};
+  $('#dialog-form').onsubmit = submitDialog;
   $('#dialog-content').onchange = event => {if (event.target.name === 'status') {const form = $('#dialog-form');const unknown = event.target.value === 'unknown';form.elements.value.disabled = unknown;form.elements.error.disabled = unknown;}if (event.target.name === 'kind' && $('#dialog-form').elements.direction && event.target.value !== 'offset') $('#dialog-form').elements.direction.value = 'none';};
-  document.addEventListener('keydown',event => {
-    const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);if ($('#edit-dialog').open || typing || state.busy) return;
-    if (event.key === 'Escape') {state.draft = null;setMode('select');}
-    if (event.key === 'Enter' && state.mode === 'polygon') {event.preventDefault();finishPolygon();}
-    if (event.key === 'Delete' || event.key === 'Backspace') {event.preventDefault();deleteAnnotation();}
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {event.preventDefault();undoRedo(event.shiftKey);}
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {event.preventDefault();undoRedo(true);}
-    if (event.key.toLowerCase() === 'v') setMode('select');
-  });
+  document.addEventListener('keydown',handleKeydown);
   window.addEventListener('beforeunload',event => {if (state.seq !== state.savedSeq || state.saving) {event.preventDefault();event.returnValue = '';}});
   new ResizeObserver(() => draw()).observe($('#canvas-host'));
 }
