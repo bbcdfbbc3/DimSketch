@@ -2,6 +2,8 @@
 
 [English README](../README.md) · [한국어 안내](README.ko.md)
 
+For the `dimtofreecad` skill's ZIP inspection and FreeCAD discovery commands, see [skill helper commands](guide/cli_usage.md).
+
 Run these commands from the repository root in Windows PowerShell. Python 3.11 (64-bit) is required.
 
 ```powershell

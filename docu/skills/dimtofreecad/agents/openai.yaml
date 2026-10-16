@@ -1,0 +1,4 @@
+interface:
+  display_name: "dimtofreecad"
+  short_description: "DimSketch ZIP의 사진과 실측값으로 FreeCAD 모델 생성"
+  default_prompt: "$dimtofreecad로 이 DimSketch ZIP을 분석하고, 필요한 치수를 질문한 뒤 편집 가능한 FreeCAD 모델을 만들어줘. ZIP 경로: "
