@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {File} from 'node:buffer';
 import {readFileSync} from 'node:fs';
 import {webcrypto} from 'node:crypto';
 import {setImmediate as nextTurn} from 'node:timers/promises';
@@ -60,13 +61,14 @@ function harness() {
     close() {this.open = false;},
   });
   const requests = [];
+  const notices = [];
   const timers = new Map();
   let timerId = 0;
   const context = {
     structuredClone, crypto: webcrypto, labelPosition, rotationHandle, rotateRegion,
     FormData: class {
       /** 목적: 폼 입력을 실제 읽기 함수에 전달 · 입력: 시험용 폼 · 출력: 입력값 맵 */
-      constructor(form) {return new Map(form.values);}
+      constructor(form) {return form ? new Map(form.values) : new FormData();}
     },
     document: {
       /** 목적: 렌더링 밖의 최소 요소 제공 · 입력: 선택자 · 출력: 시험용 요소 */
@@ -78,21 +80,23 @@ function harness() {
     clearTimeout(id) {timers.delete(id);},
     /** 목적: 지연 HTTP를 관찰해 경쟁 순서 재현 · 입력: URL·요청 옵션 · 출력: 수동 완료 Promise */
     fakeApi(url, options = {}) {
-      const payload = options.body ? JSON.parse(options.body) : null;
-      return new Promise((resolve, reject) => requests.push({url, payload, resolve, reject}));
+      const payload = typeof options.body === 'string' ? JSON.parse(options.body) : options.body || null;
+      return new Promise((resolve, reject) => requests.push({url, method:options.method, payload, resolve, reject}));
     },
+    /** 목적: 사용자에게 표시할 완료·실패 안내 관찰 · 입력: 안내와 오류 여부 · 출력: 안내 기록 */
+    fakeToast(message, error = false) {notices.push({message,error});},
   };
   vm.createContext(context);
-  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture, handleKeydown, submitDialog, openDialog, renderInspector, markObjectRegion, finishPolygon};', context);
+  vm.runInContext(appSource + '\nglobalThis.testApi = {state, commitChange, flushSave, undoRedo, pointerDown, pointerMove, pointerUp, cancelGesture, parseReading, reloadConflict, applyRegionRotation, hitTest, preventMiddleDefault, cancelPointerGesture, handleKeydown, submitDialog, openDialog, renderInspector, markObjectRegion, finishPolygon, handlePaste};', context);
   // 화면 렌더링만 생략하고 저장·이력·좌표 처리는 app.js 원본을 실행한다.
-  vm.runInContext('renderControls=()=>{};renderRecords=()=>{};renderPhotos=()=>{};renderInspector=()=>{};renderAll=()=>{};draw=()=>{};toast=()=>{};api=fakeApi;confirmAction=async()=>true;', context);
+  vm.runInContext('renderControls=()=>{};renderRecords=()=>{};renderPhotos=()=>{};renderInspector=()=>{};renderAll=()=>{};draw=()=>{};toast=fakeToast;api=fakeApi;confirmAction=async()=>true;', context);
   const functions = context.testApi;
   functions.state.project = fixture();
   functions.state.photoId = 'photo';
   functions.state.image = {};
   context.fakeHit = () => ({annotation: functions.state.project.annotations[0], kind: 'move'});
   vm.runInContext('hitTest=point=>fakeHit(point);', context);
-  return {...functions, requests, timers, context, canvas, elements};
+  return {...functions, requests, notices, timers, context, canvas, elements};
 }
 
 /** 목적: 사용자 이름 변경을 실제 변경 확정 함수에 전달 · 입력: 시험 앱·새 이름 · 출력: 저장 대기 상태 */
@@ -115,6 +119,101 @@ function saveKey(options = {}) {
   return {key:'s',code:'KeyS',ctrlKey:true,defaultPrevented:false,
     preventDefault() {this.defaultPrevented = true;},...options};
 }
+
+/** 목적: 클립보드 파일과 기본 동작 관찰 · 입력: 파일 목록과 이벤트 옵션 · 출력: 붙여넣기 이벤트 */
+function imagePaste(files, options = {}) {
+  return {target:{tagName:'BODY'},defaultPrevented:false,
+    clipboardData:{items:files.map(file => ({kind:'file',type:file.type,getAsFile(){return file;}})),files},
+    preventDefault(){this.defaultPrevented = true;},...options};
+}
+
+/** 목적: 파일 업로드 후 실제 사진 선택까지 실행 · 입력: 없음 · 출력: 이미지 로딩 화면만 생략한 앱 */
+function pasteHarness() {
+  const app = harness();vm.runInContext('loadImage=async()=>({});fitView=()=>{};',app.context);return app;
+}
+
+test('붙여넣은 이미지는 미저장 편집 후 한 번만 업로드하고 사진 모음과 선택을 갱신한다', async () => {
+  const app = pasteHarness();editName(app,'사진 추가 전에 보존할 편집');
+  const files = [new File(['capture bytes'],'capture.png',{type:'image/png'}),new File(['photo bytes'],'photo.jpg',{type:'image/jpeg'})];
+  const event = imagePaste(files);const pasted = app.handlePaste(event);
+  assert.equal(event.defaultPrevented,true);assert.equal(app.state.busy,true);
+  assert.equal(app.requests.length,1);assert.equal(app.requests[0].method,'PUT');
+  app.handlePaste(imagePaste(files));assert.equal(app.requests.length,1,'저장 대기 중 두 번째 붙여넣기는 중복 업로드하면 안 됨');
+  accept(app.requests[0]);await nextTurn();
+  const upload = app.requests[1];assert.equal(upload.method,'POST');assert.equal(upload.url,'/api/projects/project/photos');
+  assert.equal(upload.payload.get('revision'),'1');
+  const uploaded = upload.payload.getAll('files');assert.equal(uploaded.length,2,'items와 files의 같은 이미지를 중복 추가하면 안 됨');
+  assert.deepEqual(uploaded.map(file => file.name),['capture.png','photo.jpg']);
+  assert.equal(await uploaded[0].text(),'capture bytes');
+  const project = plain(app.state.project);project.revision += 1;
+  project.photos.push({id:'pasted',filename:'capture.png',width:200,height:100},{id:'pasted-2',filename:'photo.jpg',width:200,height:100});
+  upload.resolve(project);await pasted;
+  assert.equal(app.state.project.photos.length,3);assert.equal(app.state.photoId,'pasted');
+  assert.equal(app.state.project.name,'사진 추가 전에 보존할 편집');
+  assert.equal(app.state.busy,false);assert.equal(app.state.savedSeq,app.state.seq);
+  assert.match(app.notices.at(-1).message,/2장 추가 완료/);
+});
+
+test('클립보드 items가 없거나 파일을 반환하지 않아도 files의 이미지를 추가한다', async () => {
+  for (const items of [undefined,[{kind:'file',type:'image/png',getAsFile(){return null;}}]]) {
+    const app = pasteHarness();const file = new File(['capture'],'image.png',{type:'image/png'});
+    const event = imagePaste([],{clipboardData:{items,files:[file]}});const pasted = app.handlePaste(event);
+    await nextTurn();assert.equal(event.defaultPrevented,true);
+    assert.equal(app.requests[0].payload.getAll('files').length,1);
+    const project = plain(app.state.project);project.photos.push({id:'pasted',filename:'image.png',width:200,height:100});
+    app.requests[0].resolve(project);await pasted;assert.equal(app.state.photoId,'pasted');
+  }
+});
+
+test('텍스트 붙여넣기와 Ctrl+V·Cmd+V는 작성 중인 다각형을 취소하지 않는다', () => {
+  const app = harness();app.state.mode = 'polygon';app.state.draft = {shape:'polygon',points:[[15,25],[30,40]]};
+  const draft = plain(app.state.draft);
+  for (const modifiers of [{ctrlKey:true},{metaKey:true}]) app.handleKeydown({key:'v',...modifiers});
+  for (const clipboardData of [null,{items:[{kind:'string',type:'text/plain'}],files:[]}]) {
+    const event = imagePaste([],{clipboardData});app.handlePaste(event);assert.equal(event.defaultPrevented,false);
+  }
+  assert.equal(app.state.mode,'polygon');assert.deepEqual(plain(app.state.draft),draft);assert.equal(app.requests.length,0);
+  app.handleKeydown({key:'v'});assert.equal(app.state.mode,'select');assert.equal(app.state.draft,null);
+});
+
+test('입력창·편집 팝업·작업 중에는 클립보드 이미지를 사진으로 추가하지 않는다', () => {
+  const file = new File(['capture'],'image.png',{type:'image/png'});
+  for (const condition of ['INPUT','TEXTAREA','SELECT','editable','active-input','edit','confirm','region','busy','handled']) {
+    const app = harness();const event = imagePaste([file]);
+    if (['INPUT','TEXTAREA','SELECT'].includes(condition)) event.target = {tagName:condition};
+    if (condition === 'editable') event.target = {tagName:'SPAN',isContentEditable:true};
+    if (condition === 'active-input') app.context.document.activeElement = {tagName:'INPUT'};
+    if (['edit','confirm','region'].includes(condition)) app.elements.get(`#${condition}-dialog`).open = true;
+    if (condition === 'busy') app.state.busy = true;
+    if (condition === 'handled') event.defaultPrevented = true;
+    app.handlePaste(event);
+    assert.equal(event.defaultPrevented,condition === 'handled');assert.equal(app.requests.length,0);
+    assert.equal(app.state.project.photos.length,1);
+  }
+});
+
+test('프로젝트가 없으면 이미지 붙여넣기는 프로젝트 선택 안내만 표시한다', () => {
+  const app = harness();app.state.project = null;
+  const event = imagePaste([new File(['capture'],'image.png',{type:'image/png'})]);app.handlePaste(event);
+  assert.equal(event.defaultPrevented,true);assert.equal(app.requests.length,0);assert.match(app.notices[0].message,/프로젝트/);
+});
+
+test('붙여넣기 업로드 실패는 기존 사진을 유지하고 다시 시도할 수 있게 한다', async () => {
+  const app = pasteHarness();const original = plain(app.state.project);
+  const pasted = app.handlePaste(imagePaste([new File(['capture'],'image.png',{type:'image/png'})]));await nextTurn();
+  app.requests[0].reject(new Error('사진 업로드 연결 실패'));await pasted;
+  assert.deepEqual(plain(app.state.project),original);assert.equal(app.state.busy,false);
+  assert.equal(app.notices.at(-1).error,true);assert.match(app.notices.at(-1).message,/연결 실패/);
+});
+
+test('기존 편집의 저장 충돌이 발생하면 붙여넣기 업로드를 중단하고 편집을 보존한다', async () => {
+  const app = pasteHarness();editName(app,'충돌해도 남겨야 할 입력');
+  const pasted = app.handlePaste(imagePaste([new File(['capture'],'image.png',{type:'image/png'})]));
+  const conflict = Object.assign(new Error('다른 창에서 변경됨'),{status:409});app.requests[0].reject(conflict);await pasted;
+  assert.equal(app.requests.length,1);assert.equal(app.state.busy,false);assert.equal(app.state.saveError,conflict);
+  assert.equal(app.state.project.photos.length,1);assert.equal(app.state.project.name,'충돌해도 남겨야 할 입력');
+  assert.notEqual(app.state.savedSeq,app.state.seq);
+});
 
 test('기존 물체의 영역 표시에서 선택한 사각형·다각형을 다른 사진의 같은 물체로 저장한다', async () => {
   for (const mode of ['rect','polygon']) {

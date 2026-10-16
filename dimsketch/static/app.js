@@ -508,9 +508,23 @@ function zoom(factor, screen = null) {if (!state.image || state.busy) return;con
 
 /** 목적: 사용자 사진 여러 장을 저장된 프로젝트에 추가 · 입력: 파일 목록 · 출력: 새 사진과 화면 */
 async function uploadPhotos(files) {
-  if (!files.length || !state.project) return;if (!(await flushSave())) return;
+  if (!files.length || !state.project || state.busy) return;
   setBusy(true,`사진 ${files.length}장을 추가하는 중…`);
-  try {const form = new FormData();files.forEach(file => form.append('files',file));form.append('revision',state.project.revision);const project = await api(`/api/projects/${state.project.id}/photos`,{method:'POST',body:form});const previous = new Set(state.project.photos.map(photo => photo.id));state.project = project;state.undo = [];state.redo = [];state.selection = null;state.annotationId = null;renderAll();await selectPhoto(project.photos.find(photo => !previous.has(photo.id))?.id || project.photos[0]?.id);toast(`${files.length}장 추가 완료. 물체부터 표시해보세요.`);} catch(error) {if (error.status === 409) state.saveError = error;toast(error.message,true);} finally {setBusy(false);$('#photo-input').value = '';}
+  try {if (!(await flushSave())) return;const form = new FormData();files.forEach(file => form.append('files',file));form.append('revision',state.project.revision);const project = await api(`/api/projects/${state.project.id}/photos`,{method:'POST',body:form});const previous = new Set(state.project.photos.map(photo => photo.id));state.project = project;state.undo = [];state.redo = [];state.selection = null;state.annotationId = null;renderAll();await selectPhoto(project.photos.find(photo => !previous.has(photo.id))?.id || project.photos[0]?.id);toast(`${files.length}장 추가 완료. 물체부터 표시해보세요.`);} catch(error) {if (error.status === 409) state.saveError = error;toast(error.message,true);} finally {setBusy(false);$('#photo-input').value = '';}
+}
+
+/** 목적: 붙여넣은 클립보드 이미지를 현재 프로젝트 사진 모음에 추가 · 입력: 붙여넣기 이벤트 · 출력: 이미지 업로드 또는 기존 텍스트 붙여넣기 */
+function handlePaste(event) {
+  const target = event.target;const active = document.activeElement;
+  if (event.defaultPrevented || [target,active].some(element => ['INPUT','TEXTAREA','SELECT'].includes(element?.tagName) || element?.isContentEditable)) return;
+  if (state.busy || $('#edit-dialog').open || $('#confirm-dialog').open || $('#region-dialog').open) return;
+  const clipboard = event.clipboardData;
+  const files = [...(clipboard?.items || [])].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
+  if (!files.length) files.push(...[...(clipboard?.files || [])].filter(file => file.type.startsWith('image/')));
+  if (!files.length) return;
+  event.preventDefault();
+  if (!state.project) {toast('사진을 추가할 프로젝트를 먼저 선택하거나 만드세요.');return;}
+  return uploadPhotos(files);
 }
 
 /** 목적: 브라우저에서 자료 파일 내려받기 · 입력: Blob과 파일명 · 출력: 파일 다운로드 */
@@ -574,7 +588,7 @@ function handleKeydown(event) {
   if (event.key === 'Delete' || event.key === 'Backspace') {event.preventDefault();deleteAnnotation();}
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {event.preventDefault();undoRedo(event.shiftKey);}
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {event.preventDefault();undoRedo(true);}
-  if (event.key.toLowerCase() === 'v') setMode('select');
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'v') setMode('select');
 }
 
 /** 목적: 단축키와 편집 도구 연결 · 입력: 없음 · 출력: UI 이벤트 등록 */
@@ -602,6 +616,7 @@ function bindEvents() {
   $('#dialog-form').onsubmit = submitDialog;
   $('#dialog-content').onchange = event => {if (event.target.name === 'status') {const form = $('#dialog-form');const unknown = event.target.value === 'unknown';form.elements.value.disabled = unknown;form.elements.error.disabled = unknown;}if (event.target.name === 'kind' && $('#dialog-form').elements.direction && event.target.value !== 'offset') $('#dialog-form').elements.direction.value = 'none';};
   document.addEventListener('keydown',handleKeydown);
+  document.addEventListener('paste',handlePaste);
   window.addEventListener('beforeunload',event => {if (state.seq !== state.savedSeq || state.saving) {event.preventDefault();event.returnValue = '';}});
   new ResizeObserver(() => draw()).observe($('#canvas-host'));
 }
