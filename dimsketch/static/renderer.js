@@ -96,23 +96,34 @@ export function labelLayout(ctx, image, project, annotation, unit) {
   return {x,y,width,height,text};
 }
 
-/** 목적: 치수선 끝의 화살표 그리기 · 입력: 캔버스와 두 점 및 크기 · 출력: 캔버스 그리기 */
-function drawArrow(ctx, from, to, size) {
+/** 목적: 선택한 선을 사진에서 구분하도록 외곽선과 그림자 추가 · 입력: 캔버스·화면 단위·선택 여부 · 출력: 현재 경로의 외곽선과 원래 색 선 */
+function strokeGeometry(ctx, unit, selected) {
+  if (selected) {
+    ctx.save();ctx.strokeStyle = '#fff';ctx.lineWidth = 6 * unit;
+    const transform = ctx.getTransform();
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';ctx.shadowBlur = 4 * unit * Math.hypot(transform.a,transform.b);
+    ctx.shadowOffsetX = 0;ctx.shadowOffsetY = 0;ctx.stroke();ctx.restore();
+  }
+  ctx.stroke();
+}
+
+/** 목적: 치수선 끝의 화살표 그리기 · 입력: 캔버스와 두 점·크기·화면 단위·선택 여부 · 출력: 선택 강조를 포함한 화살표 */
+function drawArrow(ctx, from, to, size, unit, selected) {
   const angle = Math.atan2(to[1] - from[1], to[0] - from[0]);
   ctx.beginPath();
   ctx.moveTo(to[0], to[1]);
   ctx.lineTo(to[0] - size * Math.cos(angle - Math.PI / 6), to[1] - size * Math.sin(angle - Math.PI / 6));
   ctx.moveTo(to[0], to[1]);
   ctx.lineTo(to[0] - size * Math.cos(angle + Math.PI / 6), to[1] - size * Math.sin(angle + Math.PI / 6));
-  ctx.stroke();
+  strokeGeometry(ctx,unit,selected);
 }
 
 /** 목적: 하나의 영역·점·선을 그리기 · 입력: 캔버스와 표시 및 사진 좌표 크기 · 출력: 캔버스 그리기 */
 function drawGeometry(ctx, annotation, unit, selected, color) {
   const points = annotation.points;
   ctx.strokeStyle = color;
-  ctx.fillStyle = `${color}22`;
-  ctx.lineWidth = (selected ? 2.7 : 2) * unit;
+  ctx.fillStyle = `${color}${selected ? '55' : '22'}`;
+  ctx.lineWidth = (selected ? 3 : 2) * unit;
   ctx.lineJoin = 'round';
   ctx.setLineDash(annotation.target_type === 'feature' && annotation.shape === 'line' ? [7 * unit, 4 * unit] : []);
   ctx.beginPath();
@@ -121,16 +132,16 @@ function drawGeometry(ctx, annotation, unit, selected, color) {
     ctx.arc(x, y, 7 * unit, 0, Math.PI * 2);
     ctx.moveTo(x - 11 * unit, y);ctx.lineTo(x + 11 * unit, y);
     ctx.moveTo(x, y - 11 * unit);ctx.lineTo(x, y + 11 * unit);
-    ctx.stroke();
+    strokeGeometry(ctx,unit,selected);
   } else if (annotation.shape === 'rect') {
-    ctx.rect(points[0][0], points[0][1], points[1][0] - points[0][0], points[1][1] - points[0][1]);ctx.fill();ctx.stroke();
+    ctx.rect(points[0][0], points[0][1], points[1][0] - points[0][0], points[1][1] - points[0][1]);ctx.fill();strokeGeometry(ctx,unit,selected);
   } else {
     ctx.moveTo(...points[0]);
     points.slice(1).forEach(point => ctx.lineTo(...point));
     if (annotation.shape === 'polygon') {ctx.closePath();ctx.fill();}
-    ctx.stroke();
+    strokeGeometry(ctx,unit,selected);
     if (annotation.target_type === 'measurement' && points.length > 1) {
-      drawArrow(ctx, points[0], points[1], 9 * unit);drawArrow(ctx, points[1], points[0], 9 * unit);
+      drawArrow(ctx, points[0], points[1], 9 * unit, unit, selected);drawArrow(ctx, points[1], points[0], 9 * unit, unit, selected);
       points.forEach(([x, y]) => {ctx.beginPath();ctx.arc(x, y, 2.5 * unit, 0, Math.PI * 2);ctx.fillStyle = color;ctx.fill();});
     }
   }
@@ -144,18 +155,19 @@ export function drawScene(ctx, image, project, photoId, options = {}) {
   const unit = exporting ? Math.max(1, Math.min(2.8, image.naturalWidth / 1500)) : 1 / scale;
   ctx.save();ctx.translate(x, y);ctx.scale(scale, scale);ctx.drawImage(image, 0, 0);
   const annotations = project.annotations.filter(item => item.photo_id === photoId);
+  if (!exporting && selectedId) annotations.sort((first,second) => Number(first.id === selectedId) - Number(second.id === selectedId));
   annotations.forEach(annotation => {
     const {target, color} = annotationTarget(project, annotation);
     if (!target) return;
-    const selected = annotation.id === selectedId;
+    const selected = !exporting && annotation.id === selectedId;
     ctx.save();drawGeometry(ctx, annotation, unit, selected, color);
     const {x:lx,y:ly,text,width,height} = labelLayout(ctx,image,project,annotation,unit);
-    ctx.fillStyle = '#ffffffed';ctx.fillRect(lx, ly - height, width, height);
+    ctx.fillStyle = selected ? '#203f35' : '#ffffffed';ctx.fillRect(lx, ly - height, width, height);
     ctx.strokeStyle = color;ctx.lineWidth = (selected ? 2 : 1) * unit;ctx.strokeRect(lx, ly - height, width, height);
-    ctx.fillStyle = color;ctx.textBaseline = 'middle';ctx.fillText(text, lx + 7 * unit, ly - height / 2);
+    ctx.fillStyle = selected ? '#fff' : color;ctx.textBaseline = 'middle';ctx.fillText(text, lx + 7 * unit, ly - height / 2);
     if (selected && !exporting) drawRotationHandle(ctx,annotation,unit,color);
     ctx.restore();
   });
-  if (draft?.points?.length) {ctx.save();ctx.setLineDash([5 * unit, 4 * unit]);drawGeometry(ctx, {shape:draft.shape,target_type:'object',points:draft.points}, unit, true, '#e18c24');ctx.restore();}
+  if (!exporting && draft?.points?.length) {ctx.save();ctx.setLineDash([5 * unit, 4 * unit]);drawGeometry(ctx, {shape:draft.shape,target_type:'object',points:draft.points}, unit, true, '#e18c24');ctx.restore();}
   ctx.restore();
 }

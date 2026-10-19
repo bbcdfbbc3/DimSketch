@@ -26,12 +26,22 @@ function fixture() {
   };
 }
 
-/** 목적: 브라우저 독립적인 좌표·문구 관찰 · 입력: 없음 · 출력: Canvas 호출 기록과 최소 컨텍스트 */
-function recordingContext() {
-  const calls = [];
-  const ctx = {calls, measureText: text => ({width: text.length * 7})};
+/** 목적: 브라우저 독립적인 좌표·그리기 상태 관찰 · 입력: 화면 픽셀 배율 · 출력: Canvas 호출·칠하기 기록과 컨텍스트 */
+function recordingContext(pixelRatio = 1) {
+  const calls = [];const paints = [];const stack = [];
+  let transform = {a:pixelRatio,b:0,c:0,d:pixelRatio,e:0,f:0};
+  const properties = ['strokeStyle','fillStyle','lineWidth','lineJoin','shadowColor','shadowBlur','shadowOffsetX','shadowOffsetY','font','textBaseline','textAlign'];
+  const ctx = {calls,paints,strokeStyle:'#000',fillStyle:'#000',lineWidth:1,shadowColor:'rgba(0,0,0,0)',shadowBlur:0,shadowOffsetX:0,shadowOffsetY:0,
+    measureText: text => ({width: text.length * 7}),getTransform: () => ({...transform})};
   for (const name of ['save', 'restore', 'translate', 'scale', 'drawImage', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'fill', 'closePath', 'arc', 'rect', 'fillRect', 'strokeRect', 'fillText', 'setLineDash']) {
-    ctx[name] = (...args) => calls.push([name, ...args]);
+    ctx[name] = (...args) => {
+      calls.push([name,...args]);
+      if (name === 'save') stack.push({styles:Object.fromEntries(properties.map(property => [property,ctx[property]])),transform:{...transform}});
+      else if (name === 'restore') {const saved = stack.pop();Object.assign(ctx,saved.styles);transform = saved.transform;}
+      else if (name === 'translate') {transform.e += transform.a * args[0] + transform.c * args[1];transform.f += transform.b * args[0] + transform.d * args[1];}
+      else if (name === 'scale') {transform.a *= args[0];transform.b *= args[0];transform.c *= args[1];transform.d *= args[1];}
+      if (['stroke','fill','fillRect','strokeRect','fillText'].includes(name)) paints.push({name,args,...Object.fromEntries(properties.map(property => [property,ctx[property]])),transform:{...transform}});
+    };
   }
   return ctx;
 }
@@ -113,5 +123,53 @@ test('핸들은 보기 배율과 사진 가장자리에 맞추고 PNG에는 포�
     const ctx = recordingContext();drawScene(ctx,image,project,'front',{selectedId:'area',exporting});
     assert.equal(ctx.calls.some(call => call[0] === 'fillText' && call[1] === '↻'),!exporting);
     assert.ok(ctx.calls.some(call => call[0] === 'lineTo' && call[1] === 200 && call[2] === 150));
+  }
+});
+
+test('선택한 치수의 선·양쪽 화살표를 강조하고 라벨을 겹친 물체보다 위에 그린다', () => {
+  const project = fixture();
+  project.annotations.push({id:'area',photo_id:'front',target_type:'object',target_id:'a',shape:'rect',points:[[80,100],[340,250]],label_position:[140,175]});
+  const original = structuredClone(project);const image = {naturalWidth:600,naturalHeight:400};
+  const ctx = recordingContext();drawScene(ctx,image,project,'front',{selectedId:'ann1'});
+  const labels = ctx.paints.filter(paint => paint.name === 'fillText');
+  assert.equal(labels.at(-1).args[0],'M01  125 ±1 mm');assert.equal(labels.at(-1).fillStyle,'#fff');
+  const labelBoxes = ctx.paints.filter(paint => paint.name === 'fillRect');
+  assert.notEqual(labelBoxes.at(-1).fillStyle,labelBoxes[0].fillStyle);
+  const halos = ctx.paints.filter(paint => paint.name === 'stroke' && paint.shadowBlur > 0);
+  assert.equal(halos.length,3,'치수선과 양쪽 화살표를 함께 강조해야 함');
+  assert.ok(halos.every(paint => paint.strokeStyle === '#fff'));
+  const colorStrokes = ctx.paints.filter(paint => paint.name === 'stroke' && paint.strokeStyle === '#126d53' && paint.lineWidth > 2);
+  assert.equal(colorStrokes.length,3);assert.ok(colorStrokes.every(paint => paint.shadowBlur === 0));
+  assert.ok(halos.every(paint => paint.lineWidth > colorStrokes[0].lineWidth));
+  assert.equal(ctx.shadowBlur,0,'다음 표시의 그리기 상태로 그림자가 새면 안 됨');
+  assert.deepEqual(project,original,'선택 표시가 저장 순서·좌표·측정값을 바꾸면 안 됨');
+});
+
+test('선택 효과와 손잡이 및 미완성 도형은 PNG 내보내기에 섞이지 않는다', () => {
+  const project = fixture();
+  project.annotations.push({id:'area',photo_id:'front',target_type:'object',target_id:'a',shape:'polygon',points:[[50,50],[250,60],[230,250],[70,230]]});
+  const image = {naturalWidth:600,naturalHeight:400};const baseline = recordingContext();
+  drawScene(baseline,image,project,'front',{exporting:true});
+  for (const selectedId of ['ann1','area']) {
+    const ctx = recordingContext();
+    drawScene(ctx,image,project,'front',{exporting:true,selectedId,draft:{shape:'rect',points:[[10,10],[100,100]]}});
+    assert.deepEqual(ctx.calls,baseline.calls);assert.deepEqual(ctx.paints,baseline.paints);
+  }
+});
+
+test('사각형·다각형·기준점 선택 강조는 확대·축소와 화면 픽셀 배율에 관계없이 같은 크기로 보인다', () => {
+  const image = {naturalWidth:600,naturalHeight:400};
+  for (const shape of ['rect','polygon','point']) {
+    const project = fixture();
+    project.annotations = [{id:'selected',photo_id:'front',target_type:shape === 'point' ? 'feature' : 'object',target_id:shape === 'point' ? 'h1' : 'a',shape,
+      points:shape === 'point' ? [[100,100]] : shape === 'rect' ? [[100,100],[250,250]] : [[100,100],[250,100],[200,250]]}];
+    let baseline;
+    for (const pixelRatio of [1,2]) for (const scale of [0.5,1,3]) {
+      const ctx = recordingContext(pixelRatio);drawScene(ctx,image,project,'front',{selectedId:'selected',scale});
+      const halo = ctx.paints.find(paint => paint.name === 'stroke' && paint.shadowBlur > 0);
+      assert.ok(halo,`${shape}에도 선택 외곽선이 있어야 함`);
+      const actual = [halo.lineWidth * Math.hypot(halo.transform.a,halo.transform.b) / pixelRatio,halo.shadowBlur / pixelRatio];
+      baseline ||= actual;assert.deepEqual(actual,baseline);
+    }
   }
 });
