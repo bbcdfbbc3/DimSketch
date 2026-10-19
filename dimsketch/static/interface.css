@@ -1,0 +1,243 @@
+/* The surrounding interface has its own palette. The editor retains style.css
+   and its inherited root values, including its existing responsive layout. */
+:is(.app-header, .photos-panel, .details-panel, dialog, .toast, .busy-overlay) {
+  --ink: #242a2f;
+  --muted: #616a72;
+  --line: #e5e7e9;
+  --green: #30363c;
+  --light: #f0f2f3;
+  --danger: #a13731;
+  --orange: #965316;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.app-header, .photos-panel, .details-panel, dialog) :is(button, input, select, textarea) {
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+:is(.app-header, .photos-panel, .details-panel, dialog) :is(input, select, textarea) {
+  border-color: #cfd4d8;
+  padding: 8px 10px;
+}
+
+:is(.app-header, .photos-panel, .details-panel, dialog) :is(input, select, textarea, button):focus-visible {
+  outline: 2px solid #536775;
+  outline-offset: 2px;
+}
+
+:is(.app-header, .photos-panel, .details-panel, dialog) button.primary {
+  background: #30363c;
+  border-color: #30363c;
+  color: #fff;
+}
+
+:is(.app-header, .photos-panel, .details-panel, dialog) button.primary:hover {
+  background: #171c20;
+  border-color: #171c20;
+}
+
+:is(.app-header, .photos-panel, .details-panel, dialog) :is(button, select):disabled {
+  opacity: 1;
+  color: #747c83;
+  background: #f5f6f7;
+  border-color: #e5e7e9;
+}
+
+.app-header {
+  gap: 24px;
+  background: #f9fafb;
+  border-bottom-color: #dfe3e6;
+}
+
+.app-header .brand { gap: 9px; }
+.app-header .brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 0;
+  background: none;
+  color: #30363c;
+}
+.app-header .brand h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.6px;
+}
+.app-header .brand div > span { font-size: 11px; margin-top: 4px; }
+.app-header .project-controls { gap: 6px; }
+.app-header .project-controls select { background-color: #fff; font-weight: 600; }
+.app-header .project-controls button { background: transparent; }
+.app-header .project-controls button:hover { background: #edf0f2; }
+.app-header .header-actions { gap: 6px; }
+.app-header :is(button, input, select) { line-height: 1.2; }
+.app-header #save-status { font-size: 11px; color: var(--muted); }
+.app-header #save-status.saved { color: #53625a; }
+.app-header #save-status.saved::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #47745b;
+  vertical-align: 2px;
+}
+.app-header #save-status.error { color: var(--danger); }
+
+.photos-panel { padding: 22px 20px 0; }
+.photos-panel .panel-heading { margin-bottom: 18px; }
+.photos-panel .panel-heading h2 { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.photos-panel .photo-total { display: flex; gap: 3px; color: var(--muted); font-size: 12px; }
+.photos-panel .upload-button {
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid #cfd4d8;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 500;
+}
+.photos-panel .upload-button:hover { background: #f5f6f7; border-color: #9da7ae; }
+.photos-panel .upload-button small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.photos-panel .upload-button small span { display: block; }
+.photos-panel label.field { color: #505a63; font-size: 12px; gap: 7px; }
+.photos-panel .photo-list { padding: 0 0 12px; }
+.photos-panel .photo-card {
+  padding: 8px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: #fff;
+}
+.photos-panel .photo-card:hover { border-color: #d3d8dc; background: #f9fafb; }
+.photos-panel .photo-card.active { padding: 8px; border-color: #89959f; background: #f0f2f4; }
+.photos-panel .photo-card img { height: 112px; border-radius: 2px; background: #eceeef; }
+.photos-panel .photo-card strong { font-size: 12px; font-weight: 600; padding: 9px 0 4px; }
+.photos-panel .photo-card small { font-size: 11px; padding: 0 0 2px; }
+.photos-panel .photo-footer { margin: 0 -20px; padding: 12px 20px; font-size: 11px; line-height: 1.7; }
+.photos-panel .list-empty { padding: 24px 0; text-align: left; }
+
+.details-panel .details-intro { padding: 22px 20px 18px; }
+.details-panel .details-intro h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; line-height: 1.4; }
+.details-panel .details-intro p { font-size: 12px; }
+.details-panel .tabs { padding: 0 20px; gap: 18px; }
+.details-panel .tabs button { flex: 0 1 auto; border-radius: 0; padding: 11px 2px; font-size: 13px; }
+.details-panel .tabs button.active { border-bottom-color: #30363c; color: var(--ink); }
+.details-panel .tabs span { font-size: 11px; font-weight: 400; }
+.details-panel .records-actions { padding: 14px 20px 8px; }
+.details-panel .records-actions button { font-size: 12px; font-weight: 600; color: var(--ink); }
+.details-panel .review-count { font-size: 11px; }
+.details-panel .record-list { padding: 0 12px 14px; }
+.details-panel .record-row { padding: 10px 8px; border-radius: 3px; gap: 10px; margin-bottom: 2px; }
+.details-panel .record-row:hover { background: #f6f7f8; }
+.details-panel .record-row.active { background: #edf0f2; }
+.details-panel .record-badge { border-radius: 3px; padding: 4px 5px; min-width: 26px; }
+.details-panel .record-main strong { font-size: 12px; font-weight: 600; }
+.details-panel .record-main small { font-size: 11px; margin-top: 5px; }
+.details-panel .record-value { font-size: 12px; color: var(--ink); text-align: right; }
+.details-panel .record-value.warning { color: var(--orange); }
+.details-panel .list-empty { padding: 20px 8px; text-align: left; }
+.details-panel .inspector { padding: 20px 20px 28px; }
+.details-panel .inspector-empty { padding: 4px 0 12px; text-align: left; font-size: 12px; }
+.details-panel .inspector-title { margin-bottom: 20px; gap: 10px; }
+.details-panel .inspector-title strong { font-size: 14px; font-weight: 600; }
+.details-panel label.field { font-size: 12px; line-height: 1.5; color: #505a63; margin-bottom: 16px; gap: 7px; }
+.details-panel label.field small { font-size: 11px; }
+.details-panel .inspector h3 { font-size: 13px; font-weight: 600; margin: 24px 0 12px; }
+.details-panel .inspector .primary { margin-top: 0; min-height: 36px; }
+.details-panel .annotation-note { font-size: 11px; line-height: 1.7; margin: 12px 0; }
+.details-panel .small-note { background: #f4f5f6; border-radius: 3px; font-size: 11px; }
+.details-panel .record-actions { gap: 8px; align-items: stretch; }
+.details-panel .record-actions > button { text-align: left; padding: 9px 10px; font-size: 12px; white-space: normal; }
+.details-panel .record-actions .danger-link { align-self: flex-start; margin-top: 8px; padding: 6px 0; font-size: 11px; }
+.details-panel .rotation-controls { margin-top: 24px; }
+.details-panel .rotation-buttons { gap: 6px; }
+.details-panel .rotation-buttons button { font-size: 11px; padding: 7px 9px; }
+.details-panel .reading-card { padding: 12px; border-radius: 4px; border-color: #e0e4e7; }
+.details-panel .reading-card.chosen { background: #f5f7f8; border-color: #89959f; }
+.details-panel .reading-card strong { font-size: 14px; font-weight: 600; }
+.details-panel .reading-card small { font-size: 11px; }
+.details-panel .reading-card button { font-size: 11px; }
+.details-panel .review-alert { font-size: 12px; }
+
+dialog { border-color: #cfd4d8; border-radius: 6px; box-shadow: 0 12px 40px #17212b26; }
+dialog .dialog-header { padding: 22px 24px 20px; gap: 16px; }
+dialog .dialog-header h2 { margin: 0; font-size: 19px; font-weight: 600; }
+dialog .dialog-header button { color: #616a72; background: none; font-size: 24px; }
+dialog #dialog-content { padding: 0 24px 12px; }
+dialog .dialog-footer { padding: 16px 24px; background: #f9fafb; }
+dialog label.field { color: #505a63; margin-bottom: 16px; font-size: 12px; gap: 7px; }
+dialog label.field small { font-size: 11px; }
+:is(.details-panel, dialog) .ref-group { background: #f4f5f6; border-radius: 4px; padding: 12px; }
+:is(.details-panel, dialog) .ref-group h3 { margin: 0 0 9px; font-size: 12px; font-weight: 600; }
+dialog .segmented-note { color: #505a63; background: #f0f2f3; border-radius: 4px; font-size: 12px; }
+dialog .dialog-intro { font-size: 12px; }
+dialog .confirm-message { font-size: 13px; }
+
+.toast { background: #30363c; color: #fff; border-radius: 4px; box-shadow: 0 3px 12px #17212b1a; }
+.toast.error { background: #943c35; }
+.busy-overlay { backdrop-filter: none; }
+.busy-overlay .busy-card { border-radius: 6px; box-shadow: 0 8px 32px #17212b20; }
+.busy-overlay .busy-card strong { font-weight: 600; }
+.busy-overlay .busy-card p { font-size: 12px; }
+.busy-overlay .spinner { border-color: #dfe3e6; border-top-color: #30363c; }
+
+/* The workspace columns and editor breakpoints remain defined in style.css. */
+@media (min-width: 1700px) {
+  .photos-panel .photo-card img { height: 140px; }
+}
+
+@media (max-width: 1250px) {
+  .app-header { gap: 12px; }
+  .app-header .project-controls { gap: 5px; }
+  .app-header .brand h1 { font-size: 16px; }
+  .photos-panel { padding-left: 16px; padding-right: 16px; }
+  .photos-panel .photo-card { padding: 6px; }
+  .photos-panel .photo-card.active { padding: 6px; }
+  .photos-panel .photo-footer { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
+  .details-panel .details-intro { padding: 20px 16px 18px; }
+  .details-panel .tabs { padding: 0 16px; }
+  .details-panel .records-actions { padding-left: 16px; padding-right: 16px; }
+  .details-panel .record-list { padding-left: 8px; padding-right: 8px; }
+  .details-panel .inspector { padding: 18px 16px 24px; }
+}
+
+@media (max-width: 960px) {
+  .app-header { gap: 10px; }
+  .app-header .project-controls { flex: 1; min-width: 0; max-width: 550px; }
+  .app-header #save-status { font-size: 11px; }
+  .photos-panel .photo-card img { height: 85px; }
+  .photos-panel .upload-button { padding: 9px; }
+  .photos-panel .photo-card strong { font-size: 11px; }
+  .photos-panel .photo-card small { flex-wrap: wrap; gap: 4px; }
+  .details-panel .details-intro p { font-size: 11px; }
+  .details-panel .record-value { font-size: 11px; }
+  .details-panel .record-row { gap: 8px; }
+}
+
+@media (max-width: 750px) {
+  .app-header { padding-left: 16px; padding-right: 16px; }
+  .app-header .header-actions { flex-wrap: wrap; row-gap: 6px; }
+  .photos-panel { padding-top: 12px; }
+  .photos-panel .panel-heading { margin: 0; }
+  .photos-panel .upload-button { margin: 0; padding: 9px 10px; }
+  .photos-panel .filter-label { margin-bottom: 8px !important; }
+  .photos-panel .photo-list { padding-top: 0; }
+  .photos-panel .photo-card { margin-bottom: 0; }
+  .details-panel .details-intro { padding: 20px 20px 18px; }
+  .details-panel .tabs { padding: 0 20px; gap: 24px; }
+  .details-panel .records-actions { padding-left: 20px; padding-right: 20px; }
+  .details-panel .record-list { padding-left: 12px; padding-right: 12px; }
+  .details-panel .inspector { padding: 20px 20px 28px; }
+  dialog .dialog-header { padding: 20px; }
+  dialog #dialog-content { padding: 0 20px 10px; }
+  dialog .dialog-footer { padding: 15px 20px; }
+}
