@@ -1,5 +1,4 @@
-/* The surrounding interface has its own palette. The editor retains style.css
-   and its inherited root values, including its existing responsive layout. */
+/* Interface colours are scoped to each panel; layout stays in style.css. */
 :is(.app-header, .photos-panel, .details-panel, dialog, .toast, .busy-overlay) {
   --ink: #242a2f;
   --muted: #616a72;
@@ -66,7 +65,6 @@
   font-weight: 600;
   letter-spacing: -.6px;
 }
-.app-header .brand div > span { font-size: 11px; margin-top: 4px; }
 .app-header .project-controls { gap: 6px; }
 .app-header .project-controls select { background-color: #fff; font-weight: 600; }
 .app-header .project-controls button { background: transparent; }
@@ -74,16 +72,17 @@
 .app-header .header-actions { gap: 6px; }
 .app-header :is(button, input, select) { line-height: 1.2; }
 .app-header #save-status { font-size: 11px; color: var(--muted); }
-.app-header #save-status.saved { color: #53625a; }
+.app-header #save-status.saved { color: var(--muted); }
 .app-header #save-status.saved::before {
   content: "";
   display: inline-block;
-  width: 5px;
+  width: 9px;
   height: 5px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: #47745b;
-  vertical-align: 2px;
+  margin-right: 7px;
+  border-left: 2px solid #47745b;
+  border-bottom: 2px solid #47745b;
+  transform: rotate(-45deg);
+  vertical-align: 3px;
 }
 .app-header #save-status.error { color: var(--danger); }
 
@@ -100,14 +99,6 @@
   font-weight: 500;
 }
 .photos-panel .upload-button:hover { background: #f5f6f7; border-color: #9da7ae; }
-.photos-panel .upload-button small {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-  white-space: normal;
-}
-.photos-panel .upload-button small span { display: block; }
 .photos-panel label.field { color: #505a63; font-size: 12px; gap: 7px; }
 .photos-panel .photo-list { padding: 0 0 12px; }
 .photos-panel .photo-card {
@@ -124,6 +115,44 @@
 .photos-panel .photo-card small { font-size: 11px; padding: 0 0 2px; }
 .photos-panel .photo-footer { margin: 0 -20px; padding: 12px 20px; font-size: 11px; line-height: 1.7; }
 .photos-panel .list-empty { padding: 24px 0; text-align: left; }
+
+.editor-panel {
+  --ink: #292929;
+  --muted: #666666;
+  --line: #dedede;
+  --green: #303030;
+  --light: #ededed;
+  background: #f4f4f4;
+  color: var(--ink);
+}
+.editor-panel .editor-top > div { flex: 1; min-width: 0; }
+.editor-panel #photo-title { margin-top: 0; font-weight: 600; }
+.editor-panel #photo-view {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.editor-panel button:hover { background: var(--light); border-color: #b8b8b8; }
+.editor-panel :is(button, canvas):focus-visible { outline-color: #666666; }
+.editor-panel .tool-group button.active { background: #e0e0e0; color: var(--ink); }
+.editor-panel .tool-group button { font-size: 11px; }
+.editor-panel .history-tools button { font-size: 17px; }
+.editor-panel .zoom-tools span { font-size: 11px; }
+.editor-panel .canvas-host {
+  background-color: #e7e7e7;
+  background-image: radial-gradient(#cccccc 1px, transparent 1px);
+}
+.editor-panel .canvas-empty { color: var(--muted); }
+.editor-panel .empty-symbol { color: #999999; }
+.editor-panel .canvas-empty h2 { color: var(--ink); }
+.editor-panel .canvas-empty ol { font-size: 11px; flex-wrap: wrap; justify-content: center; padding: 0 16px; }
+.editor-panel .canvas-empty li::before { background: #d9d9d9; color: #555555; }
+.editor-panel .editor-footer { font-size: 11px; }
+.editor-panel .editor-footer span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .details-panel .details-intro { padding: 22px 20px 18px; }
 .details-panel .details-intro h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; line-height: 1.4; }
@@ -221,6 +250,8 @@ dialog .confirm-message { font-size: 13px; }
   .details-panel .details-intro p { font-size: 11px; }
   .details-panel .record-value { font-size: 11px; }
   .details-panel .record-row { gap: 8px; }
+  .editor-panel .tool-group { gap: 1px; }
+  .editor-panel .tool-group button { padding-left: 5px; padding-right: 5px; }
 }
 
 @media (max-width: 750px) {

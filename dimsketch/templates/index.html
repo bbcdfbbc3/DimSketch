@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#183e39">
+  <meta name="theme-color" content="#f4f4f4">
   <title>DimSketch · 사진으로 기록하는 치수</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='interface.css') }}">
@@ -11,21 +11,21 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="brand"><svg class="brand-mark" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M4 5v18h19M8 5h15v14M9 9h10v10H9zM4 10h3M4 16h3M10 23v-3M16 23v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg><div><h1>DimSketch</h1><span>사진 실측 기록</span></div></div>
+    <div class="brand"><svg class="brand-mark" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M4 5v18h19M8 5h15v14M9 9h10v10H9zM4 10h3M4 16h3M10 23v-3M16 23v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg><div><h1>DimSketch</h1></div></div>
     <div class="project-controls"><label class="sr-only" for="project-select">프로젝트 선택</label><select id="project-select"><option value="">프로젝트 선택</option></select><button id="project-edit" title="프로젝트 이름과 설명">이름·설명</button><button id="project-new">＋ 새 프로젝트</button></div>
     <div class="header-actions"><span id="save-status" role="status">프로젝트를 선택하세요</span><button id="save-retry" hidden>저장 재시도</button><button id="conflict-copy" hidden>내 기록 보관</button><button id="conflict-reload" hidden>서버 기록 열기</button><button id="import-button">ZIP 불러오기</button><button id="export-button" class="primary">ZIP 내보내기</button></div>
   </header>
   <main class="workspace">
     <aside class="photos-panel">
       <div class="panel-heading"><h2>사진</h2><span class="photo-total"><span id="photo-count">0</span>장</span></div>
-      <button id="upload-button" class="upload-button">＋ 사진 추가 <small><span>JPG · PNG · WebP</span><span>Ctrl+V로 붙여넣기</span></small></button>
+      <button id="upload-button" class="upload-button">＋ 사진 추가</button>
       <label class="field filter-label">물체별 사진 보기<select id="photo-filter"><option value="">모든 사진</option></select></label>
       <div id="photo-list" class="photo-list"></div>
       <div class="photo-footer">사진 비율은 치수로 환산하지 않습니다.<br>직접 잰 값을 기록하세요.</div>
     </aside>
     <section class="editor-panel" aria-label="사진 편집">
       <div id="recovery-notice" class="review-alert" role="alert" hidden></div>
-      <div class="editor-top"><div><span id="photo-view" class="eyebrow">실측 기록</span><strong id="photo-title">사진을 추가해 시작하세요</strong></div><button id="photo-edit">사진 정보</button></div>
+      <div class="editor-top"><div><strong id="photo-title">사진을 추가해 시작하세요</strong><span id="photo-view">실측 기록</span></div><button id="photo-edit">사진 정보</button></div>
       <div class="toolbar" aria-label="표시 도구">
         <div class="tool-group"><button data-mode="select" class="active" title="선택·이동 (V)">↖ 선택</button><button data-mode="rect" title="드래그해 물체 영역 표시">▭ 물체</button><button data-mode="polygon" title="꼭짓점 클릭 후 Enter 또는 더블클릭">⬡ 다각형</button><button data-mode="point" title="구멍 중심이나 기준점 표시">⊙ 기준점</button><button data-mode="plane" title="두 점으로 기준면 표시">⌑ 기준면</button><button data-mode="measure" title="두 점 클릭 후 실제 측정값 입력">↔ 치수</button></div>
         <div class="tool-group history-tools"><button id="undo-button" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소">↶</button><button id="redo-button" title="다시 실행 (Ctrl+Y)" aria-label="다시 실행">↷</button><button id="delete-annotation" title="선택한 사진 표시만 삭제" aria-label="선택 표시 삭제">⌫</button></div>
