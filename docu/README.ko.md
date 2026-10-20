@@ -58,6 +58,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 - 입력 폼에 작성 중인 내용은 완료 버튼 또는 저장 단축키로 확정한다. 잘못된 입력은 안내를 확인해 고친다. 저장 실패·다른 탭의 저장 충돌이 생기면 입력을 유지하고 안내한다.
 - 기본 저장 폴더는 저장소 루트의 `.local/`다. 같은 저장 폴더는 서버 하나에서만 연다.
 - ZIP에는 `project.json`, `originals/`, `images/`, `annotated/`, `docu/summary.md`가 들어간다. 원본 사진은 보존하며 표시 좌표는 EXIF 방향을 보정한 편집 사진 기준이다.
+- ZIP 파일명은 `프로젝트명_실측자료_YYMMDD_HHmm.zip` 형식이다. 내보내기가 완료된 시점의 사용자 PC 현지 날짜와 24시간제 시각을 사용한다. 예: `신일인쇄_실측_실측자료_261020_1050.zip`.
 - 다른 PC나 이전 앱의 프로젝트는 ZIP 내보내기 → DimSketch의 `ZIP 불러오기`로 옮긴다. 불러오기는 별도 프로젝트를 만들어 기존 자료를 보존한다.
 - `.local/`, `.venv/`, `.checks/`, ZIP은 Git에서 제외한다. 중요한 자료는 ZIP으로 따로 백업한다.
 

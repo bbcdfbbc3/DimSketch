@@ -537,6 +537,14 @@ function handlePaste(event) {
 /** 목적: 브라우저에서 자료 파일 내려받기 · 입력: Blob과 파일명 · 출력: 파일 다운로드 */
 function downloadBlob(blob, filename) {const url = URL.createObjectURL(blob);const link = document.createElement('a');link.href = url;link.download = filename;document.body.append(link);link.click();link.remove();setTimeout(() => URL.revokeObjectURL(url),30000);}
 
+/** 목적: 사용자 현지 시각을 붙인 ZIP 이름 생성 · 입력: 프로젝트 이름·내보내기 시각 · 출력: YYMMDD_HHmm 형식의 파일명 */
+function exportZipFilename(name, now = new Date()) {
+  const pad = value => String(value).padStart(2,'0');
+  const date = [now.getFullYear() % 100,now.getMonth() + 1,now.getDate()].map(pad).join('');
+  const time = [now.getHours(),now.getMinutes()].map(pad).join('');
+  return `${name.replace(/[\\/:*?"<>|]/g,'_')}_실측자료_${date}_${time}.zip`;
+}
+
 /** 목적: 저장된 같은 버전으로 표시 PNG와 ZIP 생성 · 입력: 없음 · 출력: 프로젝트 자료 ZIP 다운로드 */
 async function exportProject() {
   if (!state.project || state.busy) return;
@@ -554,7 +562,7 @@ async function exportProject() {
     }
     $('#busy-text').textContent = '원본·치수·사진을 ZIP으로 묶는 중…';
     const response = await api(`/api/projects/${snapshot.id}/export`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:snapshot.revision,annotated_images:annotated})});
-    downloadBlob(await response.blob(),`${snapshot.name.replace(/[\\/:*?"<>|]/g,'_')}_실측자료.zip`);toast('원본 사진·표시 사진·JSON·글머리 문서를 내보냈습니다.');
+    downloadBlob(await response.blob(),exportZipFilename(snapshot.name));toast('원본 사진·표시 사진·JSON·글머리 문서를 내보냈습니다.');
   } catch(error) {if (error.status === 409) state.saveError = error;toast(error.message,true);} finally {setBusy(false);}
 }
 
